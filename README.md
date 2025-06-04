@@ -7,8 +7,11 @@ The approach was developed and tested using both simulated and real-world data (
 ## Repository Structure
 
 ├── 01_simulate_dataset.R # Script to generate simulated spatio-temporal dataset
+
 ├── 02_fit_SDM_Frankenstein.R # Script to fit SDM configurations and Frankenstein model
+
 ├── /data/ # Folder to store output datasets (optional)
+
 ├── /figures/ # Folder to store plots or results (optional)
 
 
