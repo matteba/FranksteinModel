@@ -10,6 +10,8 @@ The approach was developed and tested using both simulated and real-world data (
 
 ├── 02_fit_SDM_Frankenstein.R # Script to fit SDM configurations and Frankenstein model
 
+├── 03_Projection.R # Script to project the three SDM configurations and Frankenstein model and create the contour plot
+
 ├── /data/ # Folder to store output datasets (optional)
 
 ├── /figure/ # Folder to store plots or results (optional)
