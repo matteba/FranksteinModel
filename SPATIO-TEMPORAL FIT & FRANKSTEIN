@@ -1,8 +1,16 @@
-# In the following script you will find the only-intercept,persistent,opportunistic and progressive configurations to be tested for each sub-region and then how to built the Frankestein model. 
-# As methodological workflow, you should first find the best fitting configuration of each subregion and then build the Frankestein SMD.
-#The step of indipendet variable selection should be done after finding the best spatio-temporal configuration and the Frankestein SMD built. This step is not shown here   
-#In the following example, we consider the region A to have a progressive proprieties and region B as persistent
-#For more examples on the three configuration and indipendnet variable selection please refer to https://github.com/FranIzquierdo/R-INLA-Code-Hake-HBSTM
+# In the following script, you will find the only-intercept, persistent, opportunistic, and progressive configurations 
+# to be tested for each sub-region, followed by the steps to build the Frankenstein model.
+
+# As part of the methodological workflow, you should first identify the best-fitting configuration for each sub-region,
+# and then use these to construct the Frankenstein SDM.
+
+# The step of independent variable selection should be performed **after** determining the best spatio-temporal configuration 
+# and building the Frankenstein SDM. This step is not included in this script.
+
+# In the following example, we assume Region A exhibits progressive dynamics, while Region B follows a persistent structure.
+
+# For additional examples of the three configurations and guidance on independent variable selection, 
+# please refer to: https://github.com/FranIzquierdo/R-INLA-Code-Hake-HBSTM
 
 
 library(INLA)
@@ -84,6 +92,7 @@ inla.setOption(num.threads = 4) #set number of cores to use
                 control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
                 verbose=T , num.threads = 4)
     mod.T$waic$waic
+
    #PROGRESSIVE CONFIGURATION 
     temp <- inla.spde.make.A(mesh, loc=cbind(data$x, data$y),
                              group = data$time,
