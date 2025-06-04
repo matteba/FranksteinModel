@@ -12,7 +12,7 @@ The approach was developed and tested using both simulated and real-world data (
 
 ├── /data/ # Folder to store output datasets (optional)
 
-├── /figures/ # Folder to store plots or results (optional)
+├── /figure/ # Folder to store plots or results (optional)
 
 
 ## Description of Scripts
