@@ -1,8 +1,13 @@
-##PROJECTION------------------------------------------
+#This script is to project the three single configurations and the Frankestein SDM using the first simulated dataset of the list object that can be found in the repository /data/
+#Finally the contour plot is created for the observed data and projected output of the three configuration and the Frankestein model. 
+#This is to create figure 3 in the manuscript 
+library(INLA)
+
+##SELECT THE FIRST SIMULATED DATASET------------------------------------------
 data <- sim.list.final[[1]]
 n.fit<- nrow(data)
 
-###PROJ-PERS-----------------------------------
+###PROJECT PERSISTENT CONFIGURATION-----------------------------------
 {
   location <- as.matrix(data[,c("x","y")])
   boundary <- inla.nonconvex.hull(as.matrix(data[,c("x","y")])) #mettere prediction dataset per predizione 
@@ -36,12 +41,12 @@ n.fit<- nrow(data)
               control.inla = list(strategy = "gaussian"),
               control.compute=list(dic=F, cpo=F, waic=T, return.marginals=TRUE),
               control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE, link=1),
-              verbose=T , num.threads = 20)
+              verbose=T , num.threads = 4)
   
   data$pred.pers<- mod.T$summary.fitted.values[c(1:n.fit),1]
   rm(mod.T)
   
-  ###PROJ-OPP---------------------------------- 
+  ###PROJECT OPPORTUNISTIC CONFIGURATION---------------------------------- 
   #with year separated
   temp <- inla.spde.make.A(mesh, loc=cbind(data$x, data$y),
                            repl=data$time,
@@ -61,11 +66,11 @@ n.fit<- nrow(data)
               control.inla = list(strategy = "gaussian"),
               control.compute=list(dic=F, cpo=F, waic=T, return.marginals=TRUE),
               control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE,link=1),
-              verbose=T , num.threads = 20)
+              verbose=T , num.threads = 4)
   
   data$pred.opp<- mod.T$summary.fitted.values[c(1:n.fit),1]
   rm(mod.T)
-  ###PROJ-PROG---------------------------- 
+  ###PROJECT PROGRESSIVE CONFIGURATION---------------------------- 
   temp <- inla.spde.make.A(mesh, loc=cbind(data$x, data$y),
                            group = data$time,
                            n.group = length(unique(data$time)))
@@ -87,12 +92,12 @@ n.fit<- nrow(data)
               control.inla = list(strategy = "gaussian"),
               control.compute=list(dic=F, cpo=F, waic=T, return.marginals=TRUE),
               control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE,link=1),
-              verbose=T , num.threads = 20)
+              verbose=T , num.threads = 4)
   
   data$pred.prog<- mod.T$summary.fitted.values[c(1:n.fit),1]
   rm(mod.T)
   
-  ###PROJ-FRANK-----------------------------------
+  ###PROECT FRANKENSTEIN MODEL-----------------------------------
   #split data
   data_A<- data[(data$region=="A"),]
   data_B<- data[(data$region=="B"),]
@@ -149,11 +154,9 @@ n.fit<- nrow(data)
   
   mod.frank<-inla(f.frank,     
                   family='gamma',
-                  #control.fixed=list(expand.factor.strategy="inla"),
                   data=inla.stack.data(combo.stack), 
                   control.compute=list(waic=T,dic=F, cpo=F, return.marginals=TRUE),
                   control.predictor=list(A=inla.stack.A(combo.stack), compute=TRUE, link=1),
-                  #control.mode=list(theta=prog_NS$mode$theta, restart=TRUE),
                   verbose=TRUE,control.inla = list(strategy = "gaussian"), num.threads = 4)
   
   pred.A.frank<- mod.frank$summary.fitted.values[(1:n.fit.A),1]
@@ -173,6 +176,5 @@ p<-ggplot(data_plot, aes(x = x, y = y, z = value)) +
   scale_x_continuous(breaks = c(0.5))+
   theme_minimal() +
   theme(legend.position = "none") +  # <-- Removes the legend
-  labs(title = "Filled Contour Plots by Time",
-       x = "X Coordinate", y = "Y Coordinate")
+  labs(x = "X Coordinate", y = "Y Coordinate")
 p
