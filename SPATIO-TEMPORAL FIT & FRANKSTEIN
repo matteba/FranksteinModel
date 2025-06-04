@@ -162,11 +162,11 @@ mod.T$waic$waic
                             tag='fit_B')
     fit.stack<- inla.stack(fit.stack_A,fit.stack_B)
     
-    prog<-y~-1+b0_A+b0_B+
-      f(i.con_A,model=spde,group = i.con_A.group,control.group = list(model="ar1"))+
-      f(i.con_B,model=spde)+f(year, model="iid")
+    f<-y~-1+b0_A+b0_B+
+      f(i.con_A,model=spde,group = i.con_A.group,control.group = list(model="ar1"))+ #progressive structure of region A
+      f(i.con_B,model=spde)+f(year, model="iid") #persistent structure of region B
     
-    mod.frank<-inla(prog,     
+    mod.frank<-inla(f,     
                     family='gamma',
                     #control.fixed=list(expand.factor.strategy="inla"),
                     data=inla.stack.data(fit.stack), 
