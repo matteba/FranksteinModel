@@ -17,27 +17,22 @@
 # region-specific spatio-temporal structures. This script does not include independent variable selection, which should 
 # be performed after identifying the best-fitting configuration for each subregion.
 
-
-
-
-
-
-
 library(MASS)# mvrnorm()
   {
   set.seed(123)
   ##Parameter -------------------- ##
-    n.time        <- 4           # time unit
-  rho           <- 0.8         # AR(1) – region A
+  n.rep         <- 30          # number of dataset to simulate
+  n.time        <- 4           # time unit
+  rho           <- 0.8         # rho parameter of AR(1) – region A
   gamma.shape   <- 5          # (≈ NB ‘size’)
   gamma.scale   <- 10          # mean starting value
   mu0           <- gamma.shape*gamma.scale  # ≈ 200 
   trend.B       <- 0.1        # linear trend in region B
   trend.A       <- 0.4        # linear trend in region A
   sigma2        <- 0.6           # variance of spatial field
-  phi.B           <- 0.6        # range parameter
+  phi.B           <- 0.6        # range parameter for region B
   sd.obs        <- 0.1        # observation error parameter (log-normal)
-  phi.vec   <- seq(0.8, 0.1, length.out = n.time) #vector of range parmeters
+  phi.vec   <- seq(0.8, 0.1, length.out = n.time) #vector of range parmeters for region A
   ## --------------------------------------------------------- ##
   
   
@@ -113,4 +108,4 @@ library(MASS)# mvrnorm()
     
     rbind(datA, datB)
   }
-  
+   sim.list <- lapply(1:n.rep, function(i) one.sim())
