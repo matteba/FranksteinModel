@@ -12,9 +12,9 @@ The approach was developed and tested using both simulated and real-world data (
 
 ├── 03_Projection.R # Script to project the three SDM configurations and Frankenstein model and create the contour plot
 
-├── /data/ # Folder to store output datasets (optional)
+├── /data/ # Folder to store output datasets 
 
-├── /figure/ # Folder to store plots or results (optional)
+├── /figure/ # Folder to store plots or results
 
 
 ## Description of Scripts
