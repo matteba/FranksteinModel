@@ -1,3 +1,28 @@
+# This script simulates spatio-temporal abundance data for two distinct ecological regions (A and B), 
+# to test species distribution model (SDM) configurations under controlled conditions. 
+# The simulation is designed to reflect heterogeneous spatio-temporal dynamics: Region A follows 
+# a progressive dynamic (i.e., spatio-temporal AR(1) process with a decreasing spatial correlation over time), 
+# while Region B follows a persistent dynamic (i.e., fixed spatial field with a linear temporal trend).
+#
+# A 10 × 10 regular grid is generated for each region, and spatial autocorrelation is introduced using an 
+# exponential covariance function. Temporal dynamics are added to Region A via an AR(1) process with 
+# a linear trend, whereas Region B maintains a static spatial structure with additive temporal progression.
+#
+# Abundance observations are simulated using a Negative Binomial distribution with log-normal observational error 
+# to mimic realistic ecological count data, avoiding zeros by adding 1 to each value. The final output is a tidy 
+# data frame combining both regions, including spatial coordinates, time, and abundance values.
+#
+# This synthetic dataset is intended for evaluating the fit and predictive capacity of different SDM configurations 
+# (only-intercept, persistent, opportunistic, progressive) and for building the Frankenstein SDM, which integrates 
+# region-specific spatio-temporal structures. This script does not include independent variable selection, which should 
+# be performed after identifying the best-fitting configuration for each subregion.
+
+
+
+
+
+
+
 library(MASS)# mvrnorm()
   {
   set.seed(123)
