@@ -24,3 +24,6 @@ The approach was developed and tested using both simulated and real-world data (
 
 - **02_fit_SDM_Frankenstein.R**  
   This script fits four individual spatio-temporal SDM configurations (*only-intercept, persistent, opportunistic, progressive*) to each subregion and then constructs the **Frankenstein SDM**, which integrates the best configuration per region. The output includes model comparisons (e.g., WAIC scores) and visual diagnostics.
+
+  -**03_Projection.R**
+This script is to project the three single configurations and the Frankestein SDM using the first simulated dataset of the list object that can be found in the repository /data/ . Finally the contour plot is created for the observed data and projected output of the three configuration and the Frankestein model. This is to create figure 3 in the manuscript 
