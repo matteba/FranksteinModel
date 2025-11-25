@@ -1,0 +1,711 @@
+# Create empty 3D array: 4 rows (strategies), 100 cols (simulations), 3 layers (configs)
+  sp.tem.arr <- array(NA, dim = c(4, 30, 5),
+                      dimnames = list(
+                        c('SPDE.IID','REP','GR.AR1','GR.IID'        
+                          ),
+                        paste0('sim_', 1:30),
+                        c('A', 'B','C','D', 'All')
+                      ))
+
+  for (i in 1:30) {
+    data_all <- sim.list[[i]]
+    # Create three configurations
+    data_A <- data_all[data_all$region == "A", ]
+    data_B <- data_all[data_all$region == "B", ]
+    data_C <- data_all[data_all$region == "C", ]
+    data_D <- data_all[data_all$region == "D", ]
+    data_configs <- list(A = data_A, B = data_B,C = data_C,D = data_D, All = data_all)
+  
+  for (j in 1:length(data_configs)) {
+      config_name <- names(data_configs)[j]
+      data <- data_configs[[j]]
+      n<- nrow(data)
+      location <- as.matrix(data[,c("x","y")])
+      boundary <- inla.nonconvex.hull(as.matrix(data[,c("x","y")])) #mettere prediction dataset per predizione 
+      MaxEdge <- diff(range(data$x))/15 #mettere prediction dataset per predizione 
+      bound.outer <- diff(range(data$y))/5 #mettere prediction dataset per predizione 
+      
+      mesh<-inla.mesh.2d(loc= location,
+                         boundary = boundary,
+                         max.edge = c(1,3.5)* MaxEdge, #ridurre 2 fino 0.5 per risoluzione maggiore
+                         cutoff =  MaxEdge / 10,
+                         offset =c(MaxEdge, bound.outer))
+    
+      #SPDE make
+      spde <- inla.spde2.pcmatern(mesh,prior.range=c(0.5, 0.05), prior.sigma=c(0.6, 0.05))
+      temp <- inla.spde.make.A(mesh, loc=cbind(data$x, data$y))
+      mesh.index<- inla.spde.make.index("i.bin", n.spde=spde$n.spde) #test spde with or without prior
+      
+      #PA_Yoy<- ifelse(data$Yoy>0,1,0)
+      fit.stack<-inla.stack(data=list(y=data$abundance),
+                            A=list(temp,1),
+                            effects=list(mesh.index,
+                                         list(b0=1,
+                                              year=data$time)),
+                            tag='fit')
+        ##PERS--------------------------------
+      f <- y ~ -1 + b0+
+        f(i.bin, model=spde)+f(year, model='iid')
+      mod.T<-inla(f,
+                  family='gamma',
+                  data=inla.stack.data(fit.stack),
+                  control.inla = list(strategy = "gaussian"),
+                  control.compute=list(dic=F, cpo=T, waic=T, return.marginals=TRUE),
+                  control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+                  verbose=T , num.threads = 4)
+      
+     
+      sp.tem.arr[1,i,j]<- mod.T$waic$waic
+      rm(mod.T)
+     ##OPP/REPL---------------------------- 
+      #with year separated
+      temp <- inla.spde.make.A(mesh, loc=cbind(data$x, data$y),
+                               repl=data$time,
+                               n.repl=length(unique(data$time)))
+      mesh.index<- inla.spde.make.index("i.bin", n.spde=spde$n.spde,
+                                        n.repl=length(unique(data$time))) #test spde with or without prior
+      fit.stack<-inla.stack(data=list(y=data$abundance),
+                            A=list(temp,1),
+                            effects=list(mesh.index,
+                                         list(b0=1,
+                                              year=data$time)),
+                            tag='fit')
+      f <- y ~ -1 + b0+
+        f(i.bin, model=spde,replicate=i.bin.repl)
+      mod.T<-inla(f,
+                  family='gamma',
+                  data=inla.stack.data(fit.stack),
+                  control.inla = list(strategy = "gaussian"),
+                  control.compute=list(dic=F, cpo=T, waic=T, return.marginals=TRUE),
+                  control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+                  verbose=T , num.threads = 4)
+      sp.tem.arr[2,i,j]<- mod.T$waic$waic
+      rm(mod.T)
+      ##GROUP/AR1--------------------- 
+      temp <- inla.spde.make.A(mesh, loc=cbind(data$x, data$y),
+                               group = data$time,
+                               n.group = length(unique(data$time)))
+      mesh.index<- inla.spde.make.index("i.bin", n.spde=spde$n.spde,
+                                        n.group =length(unique(data$time))) #test spde with or without prior
+      fit.stack<-inla.stack(data=list(y=data$abundance),
+                            A=list(temp,1),
+                            effects=list(mesh.index,
+                                         list(b0=1,
+                                              year=data$time)),
+                            tag='fit')
+      f <- y ~ -1 + b0+
+        f(i.bin, model=spde,group =i.bin.group,
+                         control.group = list(model="ar1"))
+      mod.T<-inla(f,
+                  family='gamma',
+                  data=inla.stack.data(fit.stack),
+                  control.inla = list(strategy = "gaussian"),
+                  control.compute=list(dic=F, cpo=T, waic=T, return.marginals=TRUE),
+                  control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+                  verbose=T , num.threads = 4)
+     sp.tem.arr[3,i,j]<- mod.T$waic$waic #smaller is better
+      rm(mod.T)
+      ##GROUP/IID----------------------------
+      f <- y ~ -1 + b0+
+        f(i.bin, model=spde,group =i.bin.group,
+          control.group = list(model="iid"))
+      mod.T<-inla(f,
+                  family='gamma',
+                  data=inla.stack.data(fit.stack),
+                  control.inla = list(strategy = "gaussian"),
+                  control.compute=list(dic=F, cpo=T, waic=T, return.marginals=TRUE),
+                  control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+                  verbose=T , num.threads = 4)
+      sp.tem.arr[4,i,j]<- mod.T$waic$waic
+      rm(mod.T)
+   }
+    
+    }
+ saveRDS(sp.tem.arr,"WAIC.sim30_group4.rds")
+  
+}
+library(ggplot2)
+library(viridis)
+library(tidyverse)
+library(rstatix)
+df <- as.data.frame.table(sp.tem.arr, responseName = "Value") %>%
+  rename(Group = Var1,
+         Simulation = Var2,
+         Category= Var3)
+
+df_mean <- df %>%
+  group_by(Category,Simulation) %>%
+  mutate(mean_sim = mean(Value, na.rm = TRUE))%>%
+  mutate(sd_sim = sd(Value, na.rm = TRUE))%>%
+  mutate(delta_sim= (Value-mean_sim)/sd_sim)%>%
+  filter(!Category =="All")
+
+p<-ggplot(df_mean, aes(x =Group , y = delta_sim)) +
+  geom_boxplot() +
+  labs(x = "Configuration",
+       y = "Scaled WAIC") +
+  facet_wrap(~Category)+
+  scale_y_continuous(breaks = c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+  theme_minimal()
+p
+
+# Friedman (overall)
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean_A)
+
+df_mean_A<- df_mean %>% filter(Category == "A")
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean_A)
+df_mean_A<- df_mean_A[,c(1,7)]
+wilcox_test<-df_mean_A %>%
+pairwise_wilcox_test(delta_sim ~ Group, paired = TRUE, p.adjust.method = "bonferroni")
+write.csv(wilcox_test, "wilcox_test_A.rev.group4.lpml.csv")
+
+df_mean_B<- df_mean %>% filter(Category == "B")
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean_B)
+df_mean_B<- df_mean_B[,c(1,7)]
+wilcox_test<-df_mean_B %>%
+  pairwise_wilcox_test(delta_sim ~ Group, paired = TRUE, p.adjust.method = "bonferroni")
+write.csv(wilcox_test, "wilcox_test_B.group4.lplm.csv")
+
+df_mean_C<- df_mean %>% filter(Category == "C")
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean_C)
+df_mean_C<- df_mean_C[,c(1,7)]
+wilcox_test<-df_mean_C %>%
+  wilcox_test(delta_sim ~ Group , p.adjust.method = "bonferroni")
+write.csv(wilcox_test, "wilcox_test_C.group4.lplm.csv")
+
+df_mean_D<- df_mean %>% filter(Category == "D")
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean_D)
+df_mean_D<- df_mean_D[,c(1,7)]
+wilcox_test<-df_mean_D %>%
+  wilcox_test(delta_sim ~ Group , p.adjust.method = "bonferroni")
+write.csv(wilcox_test, "wilcox_test_D.group4.lplm.csv")
+#FRANK FIT---------------
+sp.tem.frank <- array(NA, dim = c(1, 30),
+                      dimnames = list(
+                        c('FRANK'),
+                        paste0('sim_', 1:30)))
+LPM.frank <- array(NA, dim = c(1, 30),
+                      dimnames = list(
+                        c('FRANK'),
+                        paste0('sim_', 1:30)))
+
+
+for (i in 1:30) {
+  data <- sim.list[[i]]
+  data_A <- data[data$region == "A", ]
+  data_B <- data[data$region == "B", ]
+  data_C <- data[data$region == "D", ]
+  data_D <- data[data$region == "D", ]
+  #Now I fit the frankestein model and compare with best WAIC of the data_all (15216.75)
+  location <- as.matrix(data[,c("x","y")])
+  boundary <- inla.nonconvex.hull(as.matrix(data[,c("x","y")])) #mettere prediction dataset per predizione 
+  MaxEdge <- diff(range(data$x))/15 #mettere prediction dataset per predizione 
+  bound.outer <- diff(range(data$y))/5 #mettere prediction dataset per predizione 
+  
+  mesh<-inla.mesh.2d(loc= location,
+                     boundary = boundary,
+                     max.edge = c(1,3.5)* MaxEdge, #ridurre 2 fino 0.5 per risoluzione maggiore
+                     cutoff =  MaxEdge / 10,
+                     offset =c(MaxEdge, bound.outer))
+  #plot(mesh)
+  #points(location)
+  #SPDE make
+  spde <- inla.spde2.pcmatern(mesh,prior.range=c(0.5, 0.05), prior.sigma=c(0.6, 0.05))
+  
+  #matrix of data_A as progressive
+  temp_A <- inla.spde.make.A(mesh, loc=cbind(data_A$x, data_A$y),
+                             group = data_A$time,
+                             n.group = length(unique(data_A$time)))
+  #index of data_A as progressive
+  mesh.index_A<- inla.spde.make.index("i.con.A", n.spde=spde$n.spde,
+                                      n.group =length(unique(data_A$time))) #test spde with or without prior
+  #stack data_A
+  fit.stack_A<-inla.stack(data=list(y=data_A$abundance),
+                          A=list(temp_A,1),
+                          effects=list(mesh.index_A,
+                                       list(b0_A=1,
+                                            year=data_A$time)),
+                          tag='fit_A')
+  
+  temp_B <- inla.spde.make.A(mesh, loc=cbind(data_B$x, data_B$y))
+  mesh.index_B<- inla.spde.make.index("i.con.B", n.spde=spde$n.spde) #test spde with or without prior
+  
+  #PA_Yoy<- ifelse(data$Yoy>0,1,0)
+  fit.stack_B<-inla.stack(data=list(y=data_B$abundance),
+                          A=list(temp_B,1),
+                          effects=list(mesh.index_B,
+                                       list(b0_B=1,
+                                            year=data_B$time)),
+                          tag='fit_B')
+  #elemente for unit C
+  temp_C <- inla.spde.make.A(mesh, loc=cbind(data_C$x, data_C$y),
+                             group = data_C$time,
+                             n.group = length(unique(data_C$time)))
+  #index of data_C
+  mesh.index_C<- inla.spde.make.index("i.con.C", n.spde=spde$n.spde,
+                                      n.group =length(unique(data_C$time)))
+  #stack data_C
+  fit.stack_C<-inla.stack(data=list(y=data_C$abundance),
+                          A=list(temp_C,1),
+                          effects=list(mesh.index_C,
+                                       list(b0_C=1,
+                                            year=data_C$time)),
+                          tag='fit_C')
+  #with year separated
+  temp_D <- inla.spde.make.A(mesh, loc=cbind(data_D$x, data_D$y),
+                             repl=data_D$time,
+                             n.repl=length(unique(data_D$time)))
+  mesh.index_D<- inla.spde.make.index("i.con.D", n.spde=spde$n.spde,
+                                      n.repl=length(unique(data$time))) 
+  fit.stack_D<-inla.stack(data=list(y=data_D$abundance),
+                          A=list(temp_D,1),
+                          effects=list(mesh.index_D,
+                                       list(b0_D=1,
+                                            year=data_D$time)),
+                          tag='fit_D')
+  
+  
+  fit.stack<- inla.stack(fit.stack_A,fit.stack_B,fit.stack_C,fit.stack_D)
+  
+  prog<-y~-1+b0_A+b0_B+b0_C+b0_D+
+    f(i.con.A,model=spde,group = i.con.A.group,control.group = list(model="ar1"))+
+    f(i.con.B,model=spde)+f(year, model="iid")+
+      f(i.con.C,model=spde,group = i.con.C.group,control.group = list(model="ar1"))+
+      f(i.con.D,model=spde,replicate=i.con.D.repl)
+  
+  mod.frank<-inla(prog,     
+                  family='gamma',
+                  data=inla.stack.data(fit.stack), 
+                  control.compute=list(waic=T,dic=F, cpo=T,return.marginals=TRUE),
+                  control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+                  control.inla = list(strategy = "gaussian"), 
+                  verbose=TRUE, num.threads = 4)
+  
+
+  sp.tem.frank[1,i]<-mod.frank$waic$waic
+  rm(mod.frank)
+}
+saveRDS(sp.tem.frank,"WAIC.frank.group4.rev2.rds")
+
+library(ggplot2)
+library(viridis)
+library(tidyverse)
+#plot frank results
+df_all<-WAIC.sim30_group4[,,5]
+df_all<- rbind(df_all,WAIC.frank.group4.rev2)
+
+df <- as.data.frame.table(df_all, responseName = "Value") %>%
+  rename(Group = Var1,
+         Simulation = Var2)
+
+df_mean <- df %>%
+  group_by(Simulation) %>%
+  mutate(mean_sim = mean(Value, na.rm = TRUE))%>%
+  mutate(sd_sim = sd(Value, na.rm = TRUE))%>%
+  mutate(delta_sim= (Value-mean_sim)/sd_sim)
+
+p.all<-ggplot(df_mean, aes(x =Group , y = delta_sim)) +
+  geom_boxplot() +
+  labs(x = "Configuration",
+       y = "Scaled WAIC") +
+  scale_y_continuous(breaks = c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+  theme_minimal()
+p.all
+
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean)
+df_mean<- df_mean[,c(1,6)]
+wilcox_test<-df_mean %>%
+  wilcox_test(delta_sim ~ Group , p.adjust.method = "bonferroni")
+write.csv(wilcox_test, "wilcox_test_All.frank.group4.waic.csv")
+
+##BLOCK CV FIT---------------
+
+library(INLA)
+library(caret)
+{
+rmse <- array(NA, dim = c(4, 30),#,4), #CAREFUL HERE KEEP 4 IF USING SUBSET
+              dimnames = list(
+                c('SPDE.IID','REP','GR.AR1','GR.IID', 
+                  'FRANK' #CAREFUL HERE REMOVE IF USING SUBSET
+                ),
+                paste0('sim_', 1:30)#,
+                #c('A', 'B','C','D') #CAREFUL HERE KEEP 4 IF USING SUBSET
+              ))
+
+for (i in 1:30) {
+  rmse.loop <- array(NA, dim = c(4, 10),#,4),#CAREFUL HERE KEEP 4 IF USING SUBSET
+                dimnames = list(
+                  c('SPDE.IID','REP','GR.AR1','GR.IID' ,
+                          'FRANK' #CAREFUL HERE REMOVE IF USING SUBSET
+                    ),
+                  paste0('loop_', 1:10)#,
+                  #c('A', 'B','C','D') #CAREFUL HERE KEEP IF USING SUBSET
+                ))
+  data_all <- sim.list[[i]]
+  #data_A <- data_all[data_all$region == "A", ]
+  #data_B <- data_all[data_all$region == "B", ]
+  #data_C <- data_all[data_all$region == "C", ]
+  #data_D <- data_all[data_all$region == "D", ]
+  #data_configs <- list(A = data_A, B = data_B,C = data_C,D = data_D) #CAREFUL HERE KEEP 4 IF USING SUBSET
+  
+  #for (k in 1:length(data_configs)) { #CAREFUL HERE KEEP 4 IF USING SUBSET
+  #config_name <- names(data_configs)[k] #CAREFUL HERE KEEP 4 IF USING SUBSET
+  data <- data_all#data_configs[[k]]
+  location <- as.matrix(data[,c("x","y")])
+  boundary <- inla.nonconvex.hull(as.matrix(data[,c("x","y")])) 
+  MaxEdge <- diff(range(data$x))/15
+  bound.outer <- diff(range(data$y))/5  
+  
+  mesh<-inla.mesh.2d(loc= location,
+                     boundary = boundary,
+                     max.edge = c(1,3.5)* MaxEdge, #ridurre 2 fino 0.5 per risoluzione maggiore
+                     cutoff =  MaxEdge / 10,
+                     offset =c(MaxEdge, bound.outer))
+  spde <- inla.spde2.pcmatern(mesh,prior.range=c(0.5, 0.05), prior.sigma=c(0.6, 0.05))
+  data$loc_id <- interaction(data$region, data$time,drop = TRUE)
+  folds <- createDataPartition(data$loc_id, p = 0.8, list = FALSE,times = 10)
+ for (j in 1:5) {
+    id_fold<- folds[,j]
+    train.df  <- data[ id_fold, ]
+    val.df    <- data[-id_fold, ]
+    train.n<-nrow(train.df)
+    val.n<-nrow(val.df)
+    #compone elements for model
+    temp <- inla.spde.make.A(mesh, loc=cbind(train.df$x, train.df$y))
+    mesh.index<- inla.spde.make.index("i.bin", n.spde=spde$n.spde)
+    
+    train.stack<-inla.stack(data=list(y=train.df$abundance),
+                          A=list(temp,1),
+                          effects=list(mesh.index,
+                                       list(b0=1,
+                                            year=train.df$time)),
+                          tag='train')
+    temp.val <- inla.spde.make.A(mesh, loc=cbind(val.df$x, val.df$y))
+    mesh.index<- inla.spde.make.index("i.bin", n.spde=spde$n.spde)
+    
+    val.stack<-inla.stack(data=list(y=NA),
+                          A=list(temp.val,1),
+                          effects=list(mesh.index,
+                                       list(b0=1,
+                                            year=val.df$time)),
+                          tag='val')
+    fit.stack<- inla.stack(train.stack,val.stack)
+    ##PERS--------------------------------
+    f <- y ~ -1 + b0+
+      f(i.bin, model=spde)+f(year, model='iid')
+    mod.T<-inla(f,
+                family='gamma',
+                data=inla.stack.data(fit.stack),
+                control.inla = list(strategy = "gaussian"),
+                control.compute=list(dic=F, cpo=F, waic=F, return.marginals=F),
+                control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE,link=1),
+                verbose=T , num.threads = 4)
+    
+    # CPO per observation (leave-one-out predictive density)
+    yhat <- mod.T$summary.fitted.values[(train.n+1):(train.n+val.n),1]  # mean of predictive (response scale)
+    obs<- val.df$abundance
+    
+    #rmse.loop[1,j,k] <- sqrt(mean( (obs - yhat)^2, na.rm=TRUE )) #4regio
+    rmse.loop[1,j] <- sqrt(mean( (obs - yhat)^2, na.rm=TRUE )) #all
+    rm(mod.T) 
+    
+    ##OPP/REPL---------------------------- 
+    #with year separated
+    temp <- inla.spde.make.A(mesh, loc=cbind(train.df$x, train.df$y),
+                             repl=train.df$time,
+                             n.repl=length(unique(train.df$time)))
+    mesh.index<- inla.spde.make.index("i.bin", n.spde=spde$n.spde,
+                                      n.repl=length(unique(train.df$time))) #test spde with or without prior
+    train.stack<-inla.stack(data=list(y=train.df$abundance),
+                          A=list(temp,1),
+                          effects=list(mesh.index,
+                                       list(b0=1,
+                                            year=train.df$time)),
+                          tag='train')
+    
+    temp.val <- inla.spde.make.A(mesh, loc=cbind(val.df$x, val.df$y),
+                             repl=val.df$time,
+                             n.repl=length(unique(val.df$time)))
+    mesh.index.val<- inla.spde.make.index("i.bin", n.spde=spde$n.spde,
+                                      n.repl=length(unique(val.df$time))) #test spde with or without prior
+    val.stack<-inla.stack(data=list(y=NA),
+                          A=list(temp.val,1),
+                          effects=list(mesh.index.val,
+                                       list(b0=1,
+                                            year=val.df$time)),
+                          tag='val')
+    fit.stack<- inla.stack(train.stack,val.stack)
+    f <- y ~ -1 + b0+
+      f(i.bin, model=spde,replicate=i.bin.repl)
+    mod.T<-inla(f,
+                family='gamma',
+                data=inla.stack.data(fit.stack),
+                control.inla = list(strategy = "gaussian"),
+                control.compute=list(dic=F, cpo=F, waic=F, return.marginals=F),
+                control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE,link=1),
+                verbose=T , num.threads = 4)
+    yhat <- mod.T$summary.fitted.values[(train.n+1):(train.n+val.n),1]  # mean of predictive (response scale)
+    obs<- val.df$abundance
+   
+    #rmse.loop[2,j,k] <- sqrt(mean( (obs - yhat)^2, na.rm=TRUE )) # 4regio.
+    rmse.loop[2,j] <- sqrt(mean( (obs - yhat)^2, na.rm=TRUE )) #all
+    rm(mod.T)
+    ##GR.AR1---------------------
+    temp <- inla.spde.make.A(mesh, loc=cbind(train.df$x, train.df$y),
+                             group = train.df$time,
+                             n.group = length(unique(train.df$time)))
+    mesh.index<- inla.spde.make.index("i.bin", n.spde=spde$n.spde,
+                                      n.group =length(unique(train.df$time))) #test spde with or without prior
+    train.stack<-inla.stack(data=list(y=train.df$abundance),
+                          A=list(temp,1),
+                          effects=list(mesh.index,
+                                       list(b0=1,
+                                            year=train.df$time)),
+                          tag='train')
+    
+    temp.val <- inla.spde.make.A(mesh, loc=cbind(val.df$x, val.df$y),
+                             group = val.df$time,
+                             n.group = length(unique(val.df$time)))
+    mesh.index.val<- inla.spde.make.index("i.bin", n.spde=spde$n.spde,
+                                      n.group =length(unique(val.df$time))) #test spde with or without prior
+    val.stack<-inla.stack(data=list(y=NA),
+                            A=list(temp.val,1),
+                            effects=list(mesh.index.val,
+                                         list(b0=1,
+                                              year=val.df$time)),
+                            tag='train')
+    fit.stack<-inla.stack(train.stack,val.stack)
+    
+    f <- y ~ -1 + b0+
+      f(i.bin, model=spde,group =i.bin.group,
+        control.group = list(model="ar1"))
+    mod.T<-inla(f,
+                family='gamma',
+                data=inla.stack.data(fit.stack),
+                control.inla = list(strategy = "gaussian"),
+                control.compute=list(dic=F, cpo=F, waic=F, return.marginals=F),
+                control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE,link=1),
+                verbose=T , num.threads = 4)
+    yhat <- mod.T$summary.fitted.values[(train.n+1):(train.n+val.n),1]  # mean of predictive (response scale)
+    obs<- val.df$abundance
+    #rmse.loop[3,j,k] <- sqrt(mean( (obs - yhat)^2, na.rm=TRUE ))#4region
+    rmse.loop[3,j] <- sqrt(mean( (obs - yhat)^2, na.rm=TRUE ))#all
+    rm(mod.T)
+    ##GR.IID
+    f <- y ~ -1 + b0+
+      f(i.bin, model=spde,group =i.bin.group,
+        control.group = list(model="iid"))
+    mod.T<-inla(f,
+                family='gamma',
+                data=inla.stack.data(fit.stack),
+                control.inla = list(strategy = "gaussian"),
+                control.compute=list(dic=F, cpo=F, waic=F, return.marginals=F),
+                control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE,link=1),
+                verbose=T , num.threads = 4)
+    yhat <- mod.T$summary.fitted.values[(train.n+1):(train.n+val.n),1]  # mean of predictive (response scale)
+    obs<- val.df$abundance
+    #rmse.loop[4,j,k] <- sqrt(mean( (obs - yhat)^2, na.rm=TRUE ))#4region
+    rmse.loop[4,j] <- sqrt(mean( (obs - yhat)^2, na.rm=TRUE ))#all
+    rm(mod.T)
+    ##FRANK----------------
+    train.data_A <- train.df[train.df$region == "A", ]
+    train.data_B <- train.df[train.df$region == "B", ]
+    train.data_C <- train.df[train.df$region == "C", ]
+    train.data_D <- train.df[train.df$region == "D", ]
+    
+    
+    val.data_A <- val.df[val.df$region == "A", ]
+    val.data_B <- val.df[val.df$region == "B", ]
+    val.data_C <- val.df[val.df$region == "C", ]
+    val.data_D <- val.df[val.df$region == "D", ]
+    
+    
+    temp_A <- inla.spde.make.A(mesh, loc=cbind(train.data_A$x, train.data_A$y),
+                               group = train.data_A$time,
+                               n.group = length(unique(train.data_A$time)))
+    #index of data_A as progressive
+    mesh.index_A<- inla.spde.make.index("i.con.A", n.spde=spde$n.spde,
+                                        n.group =length(unique(train.data_A$time))) #test spde with or without prior
+    #stack data_A
+    train.stack_A<-inla.stack(data=list(y=train.data_A$abundance),
+                              A=list(temp_A,1),
+                              effects=list(mesh.index_A,
+                                           list(b0_A=1,
+                                                year=train.data_A$time)),
+                              tag='train_A')
+    
+    
+    
+    temp_A_val <- inla.spde.make.A(mesh, loc=cbind(val.data_A$x, val.data_A$y),
+                                   group = val.data_A$time,
+                                   n.group = length(unique(val.data_A$time)))
+    
+    #stack data_A
+    val.stack_A<-inla.stack(data=list(y=NA),
+                            A=list(temp_A_val,1),
+                            effects=list(mesh.index_A,
+                                         list(b0_A=1,
+                                              year=val.data_A$time)),
+                            tag='val_A')
+    
+    temp_B <- inla.spde.make.A(mesh, loc=cbind(train.data_B$x, train.data_B$y))
+    mesh.index_B<- inla.spde.make.index("i.con.B", n.spde=spde$n.spde) #test spde with or without prior
+    
+    #PA_Yoy<- ifelse(data$Yoy>0,1,0)
+    train.stack_B<-inla.stack(data=list(y=train.data_B$abundance),
+                              A=list(temp_B,1),
+                              effects=list(mesh.index_B,
+                                           list(b0_B=1,
+                                                year=train.data_B$time)),
+                              tag='train_B')
+    temp_B_val <- inla.spde.make.A(mesh, loc=cbind(val.data_B$x, val.data_B$y))
+    
+    val.stack_B<-inla.stack(data=list(y=NA),
+                            A=list(temp_B_val,1),
+                            effects=list(mesh.index_B,
+                                         list(b0_B=1,
+                                              year=val.data_B$time)),
+                            tag='val_B')
+    #elemente for unit C
+    temp_C <- inla.spde.make.A(mesh, loc=cbind(train.data_C$x, train.data_C$y),
+                               group = train.data_C$time,
+                               n.group = length(unique(train.data_C$time)))
+    #index of data_C
+    mesh.index_C<- inla.spde.make.index("i.con.C", n.spde=spde$n.spde,
+                                        n.group =length(unique(train.data_C$time)))
+    #stack data_C
+    train.stack_C<-inla.stack(data=list(y=train.data_C$abundance),
+                              A=list(temp_C,1),
+                              effects=list(mesh.index_C,
+                                           list(b0_C=1,
+                                                year=train.data_C$time)),
+                              tag='train_C')
+    val.temp_C <- inla.spde.make.A(mesh, loc=cbind(val.data_C$x, val.data_C$y),
+                                   group = val.data_C$time,
+                                   n.group = length(unique(val.data_C$time)))
+    
+    val.stack_C<-inla.stack(data=list(y=NA),
+                            A=list(val.temp_C,1),
+                            effects=list(mesh.index_C,
+                                         list(b0_C=1,
+                                              year=val.data_C$time)),
+                            tag='val_C')
+    
+    #with year separated
+    temp_D <- inla.spde.make.A(mesh, loc=cbind(train.data_D$x, train.data_D$y),
+                               repl=train.data_D$time,
+                               n.repl=length(unique(train.data_D$time)))
+    mesh.index_D<- inla.spde.make.index("i.con.D", n.spde=spde$n.spde,
+                                        n.repl=length(unique(train.data_D$time))) 
+    train.stack_D<-inla.stack(data=list(y=train.data_D$abundance),
+                              A=list(temp_D,1),
+                              effects=list(mesh.index_D,
+                                           list(b0_D=1,
+                                                year=train.data_D$time)),
+                              tag='train_D')
+    val.temp_D <- inla.spde.make.A(mesh, loc=cbind(val.data_D$x, val.data_D$y),
+                                   repl=val.data_D$time,
+                                   n.repl=length(unique(val.data_D$time)))
+    
+    
+    val.stack_D<-inla.stack(data=list(y=NA),
+                            A=list(val.temp_D,1),
+                            effects=list(mesh.index_D,
+                                         list(b0_D=1,
+                                              year=val.data_D$time)),
+                            tag='val_D')
+    
+    
+    
+    fit.stack<- inla.stack(train.stack_A,train.stack_B,train.stack_C,train.stack_D,
+                           val.stack_A,val.stack_B,val.stack_C,val.stack_D)
+    prog<-y~-1+b0_A+b0_B+b0_C+b0_D+
+      f(i.con.A,model=spde,group = i.con.A.group,control.group = list(model="ar1"))+
+      f(i.con.B,model=spde)+f(year, model="iid")+
+      f(i.con.C,model=spde,group = i.con.C.group,control.group = list(model="ar1"))+
+      f(i.con.D,model=spde,replicate=i.con.D.repl)
+    
+    mod.frank<-inla(prog,     
+                    family='gamma',
+                    data=inla.stack.data(fit.stack),
+                    control.inla = list(strategy = "gaussian"),
+                    control.compute=list(dic=F, cpo=F, waic=F, return.marginals=F),
+                    control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE,link=1),
+                    verbose=T , num.threads = 4)
+    
+    idx_val <- inla.stack.index(fit.stack, tag = "val_A")$data
+    yhat.a <- mod.frank$summary.fitted.values[idx_val, "mean"]
+    idx_val <- inla.stack.index(fit.stack, tag = "val_B")$data
+    yhat.b <- mod.frank$summary.fitted.values[idx_val, "mean"]
+    idx_val <- inla.stack.index(fit.stack, tag = "val_C")$data
+    yhat.c<- mod.frank$summary.fitted.values[idx_val, "mean"]
+    idx_val <- inla.stack.index(fit.stack, tag = "val_D")$data
+    yhat.d <- mod.frank$summary.fitted.values[idx_val, "mean"]
+    yhat<- cbind(yhat.a,yhat.b,yhat.c,yhat.d)
+    obs<- val.df$abundance
+    rmse.loop[5,j] <- sqrt(mean( (obs - yhat)^2, na.rm=TRUE ))#smaller is better
+    rm(mod.frank)
+   } # end j (folds)
+  #}   # end k (regions)
+  
+  # Average across folds per model × region for this simulation
+  #rmse[, i] <- apply(rmse.loop, c(1, 3), mean, na.rm = TRUE)#4region
+  rmse[, i] <- apply(rmse.loop, 1, mean, na.rm = TRUE)#all
+} # end i (sims)
+
+saveRDS(rmse, "rmse_CV_all.rds")
+}
+df <- as.data.frame.table(rmse_CV_4region, responseName = "Value") %>%
+  rename(Group = Var1,
+         Simulation = Var2,
+         Category= Var3)
+
+df_mean <- df %>%
+  group_by(Category,Simulation) %>%
+  mutate(mean_sim = mean(Value, na.rm = TRUE))%>%
+  mutate(sd_sim = sd(Value, na.rm = TRUE))%>%
+  mutate(delta_sim= (Value-mean_sim)/sd_sim)#%>%
+  #filter(!Category =="All")
+
+p<-ggplot(df_mean, aes(x =Group , y = delta_sim)) +
+  geom_boxplot() +
+  labs(x = "Configuration",
+       y = "Scaled RMSE") +
+  facet_wrap(~Category)+
+  scale_y_continuous(breaks = c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+  theme_minimal()
+p
+df_mean_A<- df_mean %>% filter(Category == "A")
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean_A)
+df_mean_A<- df_mean_A[,c(1,7)]
+wilcox_test<-df_mean_A %>%
+  wilcox_test(delta_sim ~ Group , p.adjust.method = "bonferroni")
+write.csv(wilcox_test, "wilcox_test_A.4reg.rmse.csv")
+
+df_mean_B<- df_mean %>% filter(Category == "B")
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean_B)
+df_mean_B<- df_mean_B[,c(1,7)]
+wilcox_test<-df_mean_B %>%
+  wilcox_test(delta_sim ~ Group , p.adjust.method = "bonferroni")
+write.csv(wilcox_test, "wilcox_test_B.4reg.rmse.csv")
+
+df_mean_C<- df_mean %>% filter(Category == "C")
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean_C)
+df_mean_C<- df_mean_C[,c(1,7)]
+wilcox_test<-df_mean_C %>%
+  wilcox_test(delta_sim ~ Group , p.adjust.method = "bonferroni")
+write.csv(wilcox_test, "wilcox_test_C.4reg.rmse.csv")
+
+df_mean_D<- df_mean %>% filter(Category == "D")
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean_D)
+df_mean_D<- df_mean_D[,c(1,7)]
+wilcox_test<-df_mean_D %>%
+  wilcox_test(delta_sim ~ Group , p.adjust.method = "bonferroni")
+write.csv(wilcox_test, "wilcox_test_D.4reg.rmse.csv")
+
+
+friedman.test(delta_sim ~ Group | Simulation, data = df_mean)
+df_mean<- df_mean[,c(1,6)]
+wilcox_test<-df_mean %>%
+  wilcox_test(delta_sim ~ Group , p.adjust.method = "bonferroni")
+write.csv(wilcox_test, "wilcox_test_rse_All_frank.group4.csv")
