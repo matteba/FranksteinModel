@@ -6,11 +6,19 @@ The approach was developed and tested using both simulated and real-world data (
 
 ## Repository Structure
 
-├── 01_simulate_dataset.R # Script to generate simulated spatio-temporal dataset
+├── 01_simulate_dataset_2reg.R # Script to generate simulated spatio-temporal dataset composed of 2 regions
 
-├── 02_fit_SDM_Frankenstein.R # Script to fit SDM configurations and Frankenstein model
+├── 02_FIT&CV-FRANKENSTEIN.R # Script to fit SDM configurations and Frankenstein model for 2 regions
 
-├── 03_Projection.R # Script to project the three SDM configurations and Frankenstein model and create the contour plot
+├── 03_COVARIATE SIM&FIT&CV.R # Script to simulate covariate + fit SDM configurations and Frankenstein model + CV for 2 regions
+
+├── 04_simulate_dataset_4reg.R # Script to generate simulated spatio-temporal dataset composed of 4 regions
+
+├── 05_FIT&CV-FRANKENSTEIN.R # Script to fit SDM configurations and Frankenstein model for 4 regions
+
+├── 06_Projection.R # Script to project the three SDM configurations and Frankenstein model and create the contour plot
+
+├── 07_REAL-DATASET-FIT&CV-FRANKENSTEIN.R # Script to fit SDM configurations and Frankenstein model for the real dataset
 
 ├── /data/ # Folder to store output datasets 
 
