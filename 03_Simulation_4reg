@@ -1,3 +1,22 @@
+# This script simulates spatio-temporal abundance data for FUOR distinct ecological regions (A, B, C and D), 
+# to test species distribution model (SDM) configurations under complex conditions. 
+# The simulation is designed to reflect heterogeneous spatio-temporal dynamics: Region A and C follows 
+# a progressive dynamic (i.e., spatio-temporal AR(1) ), 
+#Region B follows a persistent dynamic (i.e., fixed spatial field with a linear temporal trend),
+#Region D follows a opportunistic synamic (i.e., changing spatial structure every time unit with no interannual correlation) .
+#
+# A regular grid is generated for each region, and spatial autocorrelation is introduced using an 
+# exponential covariance function. 
+
+
+# Abundance observations are simulated using a Gamma distribution. Observational error is included. 
+# he final output is a tidy # data frame combining both regions, including spatial coordinates, time, 
+and abundance values.
+#
+# This synthetic dataset is intended for evaluating the fit and predictive capacity of different SDM configurations 
+# (persistent, opportunistic, progressive-Type-IV-AR1 and Type-III) and for building the Frankenstein SDM, which integrates 
+# region-specific spatio-temporal structures. This script does not include independent variable selection, which should 
+# be performed after identifying the best-fitting configuration for each subregion.
 library(MASS)# mvrnorm()
 {
   set.seed(123)
