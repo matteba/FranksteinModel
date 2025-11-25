@@ -13,31 +13,32 @@
 # data frame combining both regions, including spatial coordinates, time, and abundance values.
 #
 # This synthetic dataset is intended for evaluating the fit and predictive capacity of different SDM configurations 
-# (only-intercept, persistent, opportunistic, progressive) and for building the Frankenstein SDM, which integrates 
+# (persistent, opportunistic, progressive-Type-IV-AR1 and Type-III) and for building the Frankenstein SDM, which integrates 
 # region-specific spatio-temporal structures. This script does not include independent variable selection, which should 
 # be performed after identifying the best-fitting configuration for each subregion.
 
 library(MASS)# mvrnorm()
-  {
+{
   set.seed(123)
   ##Parameter -------------------- ##
   n.rep         <- 30          # number of dataset to simulate
-  n.time        <- 4           # time unit
+  n.time        <- 6           # time unit
   rho           <- 0.8         # rho parameter of AR(1) – region A
-  gamma.shape   <- 5          # (≈ NB ‘size’)
+  gamma.shape   <- 80          # (≈ NB ‘size’)
   gamma.scale   <- 10          # mean starting value
   mu0           <- gamma.shape*gamma.scale  # ≈ 200 
   trend.B       <- 0.1        # linear trend in region B
   trend.A       <- 0.4        # linear trend in region A
   sigma2        <- 0.6           # variance of spatial field
-  phi.B           <- 0.6        # range parameter for region B
+  phi.B           <- 1.2        # range parameter for region B
   sd.obs        <- 0.1        # observation error parameter (log-normal)
+  sd.obs.B  <- 0.02
   phi.vec   <- seq(0.8, 0.1, length.out = n.time) #vector of range parmeters for region A
   ## --------------------------------------------------------- ##
   
   
   ## regular grid generation 10 × 10
-    grid.coord <- function(xmin, xmax, ymin = 0, ymax = 1, n = 10){
+  grid.coord <- function(xmin, xmax, ymin = 0, ymax = 1, n = 10){
     expand.grid(
       x = seq(xmin + (xmax-xmin)/(2*n), xmax - (xmax-xmin)/(2*n), length.out = n),
       y = seq(ymin + (ymax-ymin)/(2*n), ymax - (ymax-ymin)/(2*n), length.out = n)
@@ -59,7 +60,6 @@ library(MASS)# mvrnorm()
     for(t in 1:n.time){
       phi.t     <- phi.vec[t]
       Sigma.A.t <- expCov(A.xy, phi = phi.t)
-      #Sigma.A.t <- expCov(A.xy) * exp(-as.matrix(dist(A.xy)) / phi.t)
       chol.A.t  <- chol(Sigma.A.t)
       eps.A.t   <- rnorm(n.A) %*% chol.A.t
       if(t == 1){
@@ -69,21 +69,30 @@ library(MASS)# mvrnorm()
       }
     }
     ##Region B: linear trend + fixed spatial field
-    Sigma.B <- expCov(B.xy, phi.B);  chol.B <- chol(Sigma.B)
-    S.B     <- as.numeric(rnorm(n.B) %*% chol.B)      # parte spaziale
-    field.B <- outer(0:(n.time-1), S.B,
-                     function(tt, sb) sb + trend.B*tt)
+    # Region B
+    Sigma.B <- expCov(B.xy, phi.B) ; chol.B <- chol(Sigma.B)
+    S.B     <- as.numeric(rnorm(n.B) %*% chol.B)
+    
+    time_seq <- 0:(n.time-1)
+    # global non-spatial year effect (same for all locations), iid across years
+    tau_year <- 0.3                      # tweak to taste
+    delta_t  <- rnorm(n.time, 0, sqrt(tau_year))
+    
+    field.B <- matrix(NA, n.time, n.B)
+    for (t in 1:n.time) {
+      field.B[t, ] <- S.B + trend.B * time_seq[t] + delta_t[t]  # SAME across space
+    }
+    
     
     ##Gamma distribution Observation from NB + observation error
     obs.A <- obs.B <- vector("list", n.time)
     for(t in 1:n.time){
       mu.A <- mu0 * exp(field.A[t, ] + rnorm(n.A, 0, sd.obs))
-      mu.B <- mu0 * exp(field.B[t, ] + rnorm(n.B, 0, sd.obs))
-      
-      ## Conteggi: Negative Binomial + 1 (per evitare zeri)
+      mu.B <- mu0 * exp(field.B[t, ] + rnorm(n.B, 0, sd.obs.B))
+  
       ## In R: 'size' = gamma.shape, 'mu' = media desiderata
-      obs.A[[t]] <- rnbinom(n.A, size = gamma.shape, mu = mu.A) + 1L
-      obs.B[[t]] <- rnbinom(n.B, size = gamma.shape, mu = mu.B) + 1L
+      obs.A[[t]] <- rgamma(n.A, shape=gamma.shape, scale=mu.A/gamma.shape)
+      obs.B[[t]] <- rgamma(n.B, shape=gamma.shape, scale=mu.B/gamma.shape)
     }
     
     ## -------- Assembly of data frame “tidy” -------- ##
@@ -100,12 +109,7 @@ library(MASS)# mvrnorm()
       abundance = unlist(obs.B)
     )
     
-    ## Check: integer number, no zero
-    stopifnot(all(datA$abundance > 0),
-              all(datB$abundance > 0),
-              all(datA$abundance %% 1 == 0),
-              all(datB$abundance %% 1 == 0))
-    
     rbind(datA, datB)
   }
-   sim.list <- lapply(1:n.rep, function(i) one.sim())
+  sim.list <- lapply(1:n.rep, function(i) one.sim())
+}
