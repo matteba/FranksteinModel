@@ -3,11 +3,11 @@
 #This is to create figure 3 in the manuscript 
 library(INLA)
 
-##SELECT THE FIRST SIMULATED DATASET------------------------------------------
-data <- sim.list.final[[1]]
+##PROJECTION------------------------------------------
+data <- sim.list.2reg.fin[[5]]
 n.fit<- nrow(data)
 
-###PROJECT PERSISTENT CONFIGURATION-----------------------------------
+###PROJ-PERS-----------------------------------
 {
   location <- as.matrix(data[,c("x","y")])
   boundary <- inla.nonconvex.hull(as.matrix(data[,c("x","y")])) #mettere prediction dataset per predizione 
@@ -26,7 +26,7 @@ n.fit<- nrow(data)
   #obs
   temp <- inla.spde.make.A(mesh, loc=cbind(data$x, data$y))
   mesh.index<- inla.spde.make.index("i.con", n.spde=spde$n.spde)
-
+  
   
   fit.stack<-inla.stack(data=list(y=data$abundance),
                         A=list(temp,1),
@@ -46,7 +46,7 @@ n.fit<- nrow(data)
   data$pred.pers<- mod.T$summary.fitted.values[c(1:n.fit),1]
   rm(mod.T)
   
-  ###PROJECT OPPORTUNISTIC CONFIGURATION---------------------------------- 
+  ###PROJ-OPP---------------------------------- 
   #with year separated
   temp <- inla.spde.make.A(mesh, loc=cbind(data$x, data$y),
                            repl=data$time,
@@ -59,7 +59,7 @@ n.fit<- nrow(data)
                                      list(b0=1,
                                           year=data$time)),
                         tag='fit')
-  f <- y ~ -1 + b0+f(i.con, model=spde,replicate=i.con.group)
+  f <- y ~ -1 + b0+f(i.con, model=spde,replicate=i.con.repl)
   mod.T<-inla(f,
               family='gamma',
               data=inla.stack.data(fit.stack),
@@ -70,7 +70,7 @@ n.fit<- nrow(data)
   
   data$pred.opp<- mod.T$summary.fitted.values[c(1:n.fit),1]
   rm(mod.T)
-  ###PROJECT PROGRESSIVE CONFIGURATION---------------------------- 
+  ###PROJ-PROG---------------------------- 
   temp <- inla.spde.make.A(mesh, loc=cbind(data$x, data$y),
                            group = data$time,
                            n.group = length(unique(data$time)))
@@ -84,7 +84,7 @@ n.fit<- nrow(data)
                                           year=data$time)),
                         tag='fit')
   
-  f <- y ~ -1 + b0+f(i.con, model=spde,replicate=i.con.group,
+  f <- y ~ -1 + b0+f(i.con, model=spde,group=i.con.group,
                      control.group = list(model="ar1"))
   mod.T<-inla(f,
               family='gamma',
@@ -96,15 +96,27 @@ n.fit<- nrow(data)
   
   data$pred.prog<- mod.T$summary.fitted.values[c(1:n.fit),1]
   rm(mod.T)
-  
-  ###PROECT FRANKENSTEIN MODEL-----------------------------------
+  ##GROUP/IID----------------------------
+  f <- y ~ -1 + b0+
+    f(i.con, model=spde,group =i.con.group,
+      control.group = list(model="iid"))
+  mod.T<-inla(f,
+              family='gamma',
+              data=inla.stack.data(fit.stack),
+              control.inla = list(strategy = "gaussian"),
+              control.compute=list(dic=F, cpo=T, waic=T, return.marginals=TRUE),
+              control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+              verbose=T , num.threads = 4)
+  data$pred.group.iid<- mod.T$summary.fitted.values[c(1:n.fit),1]
+  rm(mod.T)
+  ###PROJ-FRANK-----------------------------------
   #split data
   data_A<- data[(data$region=="A"),]
   data_B<- data[(data$region=="B"),]
   n.fit.A<- nrow(data_A)
   n.fit.B<- nrow(data_B)
   #slipt pred grid
-
+  
   location <- as.matrix(data[,c("x","y")])
   boundary <- inla.nonconvex.hull(as.matrix(data[,c("x","y")])) #mettere prediction dataset per predizione 
   MaxEdge <- diff(range(data$x))/15 #mettere prediction dataset per predizione 
@@ -135,7 +147,7 @@ n.fit<- nrow(data)
                                             year=data_A$time)),
                           tag='fit_A')
   
-
+  
   temp.B <- inla.spde.make.A(mesh, loc=cbind(data_B$x, data_B$y))
   mesh.index.B<- inla.spde.make.index("i.con.B", n.spde=spde$n.spde) #test spde with or without prior
   
@@ -145,7 +157,7 @@ n.fit<- nrow(data)
                                        list(b0_B=1,
                                             year=data_B$time)),
                           tag='fit_B')
- 
+  
   combo.stack<- inla.stack(fit.stack_A,fit.stack_B)
   
   f.frank<-y~-1+b0_A+b0_B+
@@ -154,27 +166,31 @@ n.fit<- nrow(data)
   
   mod.frank<-inla(f.frank,     
                   family='gamma',
+                  #control.fixed=list(expand.factor.strategy="inla"),
                   data=inla.stack.data(combo.stack), 
                   control.compute=list(waic=T,dic=F, cpo=F, return.marginals=TRUE),
                   control.predictor=list(A=inla.stack.A(combo.stack), compute=TRUE, link=1),
+                  #control.mode=list(theta=prog_NS$mode$theta, restart=TRUE),
                   verbose=TRUE,control.inla = list(strategy = "gaussian"), num.threads = 4)
   
   pred.A.frank<- mod.frank$summary.fitted.values[(1:n.fit.A),1]
   pred.B.frank<- mod.frank$summary.fitted.values[(n.fit.A+1):(n.fit.A+n.fit.B),1]
   data$pred.frank<- c(pred.A.frank,pred.B.frank)
+  saveRDS(data,"data_pred.rds")
 }
 library(tidyverse)
 library(ggplot2)
-colnames(data)[5:9]<- c("SIM.DATA","PERS","OPPO","PROG","FRANK")
-data_plot<- data %>% pivot_longer(cols = c(5:9), names_to = "conf")
-data_plot$conf<-  factor(data_plot$conf, levels = c("SIM.DATA","PERS","OPPO","PROG","FRANK")) 
+colnames(data)[5:10]<- c("SIM.DATA","PERS","OPPO","TYPE-IV-AR1","TYPE-III","FRANK")
+data_plot<- data %>% pivot_longer(cols = c(5:10), names_to = "conf")
+data_plot$conf<-  factor(data_plot$conf, levels = c("SIM.DATA","PERS","OPPO","TYPE-IV-AR1","TYPE-III","FRANK")) 
 p<-ggplot(data_plot, aes(x = x, y = y, z = value)) +
-  geom_contour_filled(bins = 15) +
+  geom_contour_filled(bins = 25) +
   geom_vline(xintercept = 0.5, linetype = "dashed", color = "red") + 
   facet_grid(conf~ time) +
   coord_fixed() +
   scale_x_continuous(breaks = c(0.5))+
   theme_minimal() +
   theme(legend.position = "none") +  # <-- Removes the legend
-  labs(x = "X Coordinate", y = "Y Coordinate")
+  labs(title = "Filled Contour Plots by Time",
+       x = "X Coordinate", y = "Y Coordinate")
 p
