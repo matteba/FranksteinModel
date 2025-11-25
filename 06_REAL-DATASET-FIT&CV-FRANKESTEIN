@@ -1,0 +1,527 @@
+#This is the code for testing the configurations and the Frankestein model and calculating the cross-validation
+#Double check the code before running
+
+
+#nord
+df_con_N<- real_df[(real_df$Sos==1),]
+#sud +3
+df_con_S_3<- real_df[(!real_df$Sos==1),]
+
+
+data_configs <- list(N = df_con_N, SW = df_con_S_3, All = real_df)
+
+sp.tem.arr <- array(NA, dim = c(4,3),
+                    dimnames = list(
+                      c('SPDE.IID',
+                        'REP',
+                        'GR.AR1','GR.IID'#, 
+                        #'GR.RW2'
+                      ),
+                      c('N', 'SW', 'All')
+                    ))
+for (j in 1:length(data_configs)) {
+  config_name <- names(data_configs)[j]
+  data <- data_configs[[j]]
+  
+  location <- as.matrix(data[,c("Xlcc","Ylcc")])
+  boundary <- inla.nonconvex.hull(as.matrix(data[,c("Xlcc","Ylcc")])) #mettere prediction dataset per predizione 
+  rx <- diff(range(data$Xlcc)); ry <- diff(range(data$Ylcc))
+  span <- max(rx, ry)
+  MaxEdge     <- span / 15
+  bound.outer <- span / 5
+  
+  mesh<-inla.mesh.2d(loc= location,
+                     boundary = boundary,
+                     max.edge = c(0.8,3.5)* MaxEdge, 
+                     cutoff =  MaxEdge / 10,
+                     offset =c(MaxEdge, bound.outer))
+  spde <- inla.spde2.pcmatern(mesh,prior.range=c(0.5, 0.05), prior.sigma=c(0.6, 0.05)) 
+  temp <- inla.spde.make.A(mesh, loc=cbind(data$Xlcc, data$Ylcc))
+  mesh.index<- inla.spde.make.index("i.con", n.spde=spde$n.spde) #test spde with or without prior
+  
+  fit.stack<-inla.stack(data=list(y=data$Yoy),
+                        A=list(temp,1),
+                        effects=list(mesh.index,
+                                     list(b0=1,
+                                          year= data$year_index)),
+                        tag='fit')
+  
+  ##PERS--------------------------------
+  f <- y ~ -1 + b0+f(i.con, model=spde)+f(year, model='iid')
+  mod.T<-inla(f,
+              family='gamma',
+              data=inla.stack.data(fit.stack),
+              control.inla = list(strategy = "gaussian"),
+              control.compute=list(dic=F, cpo=T, waic=T, return.marginals=TRUE),
+              control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+              verbose=T , num.threads = 4)
+  
+  sp.tem.arr[1,j]<- mod.T$waic$waic
+  rm(mod.T)
+  ##OPP/REPL---------------------------- 
+  #with year separated
+  temp <- inla.spde.make.A(mesh, loc=cbind(data$Xlcc, data$Ylcc),
+                           repl=data$year_index,
+                           n.repl=length(unique(data$year_index)))
+  mesh.index<- inla.spde.make.index("i.con", n.spde=spde$n.spde,n.repl=length(unique(data$year_index))) #test spde with or without prior
+  fit.stack<-inla.stack(data=list(y=data$Yoy),
+                        A=list(temp,1),
+                        effects=list(mesh.index,
+                                     list(b0=1,
+                                          year=data$year_index)),
+                        tag='fit')
+  f <- y ~ -1 + b0+f(i.con, model=spde,replicate=i.con.repl)
+  mod.T<-inla(f,
+              family='gamma',
+              data=inla.stack.data(fit.stack),
+              control.inla = list(strategy = "gaussian"),
+              control.compute=list(dic=F, cpo=T, waic=T, return.marginals=TRUE),
+              control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+              verbose=T , num.threads = 4)
+  sp.tem.arr[2,j]<- mod.T$waic$waic
+  rm(mod.T)
+  ##GROUP/AR1--------------------- 
+  temp <- inla.spde.make.A(mesh, loc=cbind(data$Xlcc, data$Ylcc),
+                           group = data$year_index,
+                           n.group = length(unique(data$year_index)))
+  mesh.index<- inla.spde.make.index("i.con", n.spde=spde$n.spde,
+                                    n.group =length(unique(data$year_index))) #test spde with or without prior
+  fit.stack<-inla.stack(data=list(y=data$Yoy),
+                        A=list(temp,1),
+                        effects=list(mesh.index,
+                                     list(b0=1,
+                                          year=data$year_index)),
+                        tag='fit')
+  f <- y ~ -1 + b0+
+    f(i.con, model=spde,group =i.con.group,
+      control.group = list(model="ar1"))
+  mod.T<-inla(f,
+              family='gamma',
+              data=inla.stack.data(fit.stack),
+              control.inla = list(strategy = "gaussian"),
+              control.compute=list(dic=F, cpo=T, waic=T, return.marginals=TRUE),
+              control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+              verbose=T , num.threads = 4)
+ 
+  sp.tem.arr[3,j]<- mod.T$waic$waic #smaller is better
+  rm(mod.T)
+  ##GROUP/IID----------------------------
+  f <- y ~ -1 + b0+
+    f(i.con, model=spde,group =i.con.group,
+      control.group = list(model="iid"))
+  mod.T<-inla(f,
+              family='gamma',
+              data=inla.stack.data(fit.stack),
+              control.inla = list(strategy = "gaussian"),
+              control.compute=list(dic=F, cpo=T, waic=T, return.marginals=TRUE),
+              control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+              verbose=T , num.threads = 4)
+  
+  sp.tem.arr[4,j]<- mod.T$waic$waic
+  rm(mod.T)
+  
+}
+saveRDS(sp.tem.arr,"WAIC.real.con.rev2.rds")
+}
+
+#FRANKESTAIN-------------
+location <- as.matrix(df_con[,c("Xlcc","Ylcc")])
+boundary <- inla.nonconvex.hull(as.matrix(df_con[,c("Xlcc","Ylcc")])) #mettere prediction dataset per predizione 
+rx <- diff(range(real_df$Xlcc)); ry <- diff(range(real_df$Ylcc))
+    span <- max(rx, ry)
+    MaxEdge     <- span / 15
+    bound.outer <- span / 5
+mesh<-inla.mesh.2d(loc= location,
+                   boundary = boundary,
+                   max.edge = c(0.5,3.5)* MaxEdge, #ridurre 2 fino 0.5 per risoluzione maggiore
+                   cutoff =  MaxEdge / 10,
+                   offset =c(MaxEdge, bound.outer))
+spde <- inla.spde2.pcmatern(mesh,prior.range=c(0.5, 0.05), prior.sigma=c(0.6, 0.05))
+
+#matrix per nord
+temp_N <- inla.spde.make.A(mesh, loc=cbind(df_con_N$Xlcc, df_con_N$Ylcc),
+                           group = df_con_N$year_index,
+                           n.group = length(unique(df_con_N$year_index))
+                           )
+mesh.index_N<- inla.spde.make.index("i.con.N", n.spde=spde$n.spde,
+                                    n.group = length(unique(df_con_N$year_index))) #test spde with or without prior
+#matrix per south + zoe 3
+temp_S3 <- inla.spde.make.A(mesh, loc=cbind(df_con_S_3$Xlcc, df_con_S_3$Ylcc),
+                            group = df_con_S_3$year_index,
+                            n.group = length(unique(df_con_S_3$year_index)))
+#with year separated
+mesh.index_S3<- inla.spde.make.index("i.con.S3", n.spde=spde$n.spde,
+                                     n.group = length(unique(df_con_S_3$year_index))) #test spde with or without prior
+
+fit.stack_N<-inla.stack(data=list(y=df_con_N$Yoy),
+                        A=list(temp_N,1),
+                        effects=list(mesh.index_N,
+                                     list(b0_N=1,
+                                          year= df_con_N$year_index)),
+                        tag='fit')
+fit.stack_S3<-inla.stack(data=list(y=df_con_S_3$Yoy),
+                         A=list(temp_S3,1),
+                         effects=list(mesh.index_S3,
+                                      list(b0_S3=1,
+                                           year= df_con_S_3$year_index)),
+                         tag='fit')
+
+fit.stack<-inla.stack(fit.stack_N,fit.stack_S3)
+
+
+prog<-y~-1+b0_N+b0_S3+
+  f(i.con.N,model=spde,group = i.con.N.group,control.group = list(model="ar1"))+
+  f(i.con.S3,model=spde,group = i.con.S3.group,control.group = list(model="ar1"))
+
+
+mod.frank<-inla(prog,     
+                family='gamma',
+                #control.fixed=list(expand.factor.strategy="inla"),
+                data=inla.stack.data(fit.stack), 
+                control.compute=list(dic=F,cpo=T,waic=T),
+                control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
+                #control.mode=list(theta=prog_NS$mode$theta, restart=TRUE),
+                verbose=TRUE,control.inla = list(strategy = "gaussian"), num.threads = 4)
+
+
+mod.frank$waic$waic
+
+##BLOCK CV-------------------
+library(blockCV)
+library(sf)
+## assumes: libraries sf, blockCV, INLA loaded; data frames df_con_N, df_con_S_3, real_df with
+## columns: Xlcc, Ylcc, Yoy (>0 for gamma), year_index (integer or factor-like)
+
+data_configs <- list(N = df_con_N, SW = df_con_S_3)
+
+rmse <- array(NA_real_, dim = c(4, 2),
+              dimnames = list(
+                c('SPDE.IID', 'REP', 'GR.AR1', 'GR.IID'),
+                c('N', 'SW')
+              ))
+
+set.seed(123)  # reproducibility of fold assignment
+
+lcc<- ("+proj=lcc +lat_1=38.5 +lat_2=33.4 +lat_0=35.83 +lon_0=13.12
+           +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs")
+
+for (j in seq_along(data_configs)) {
+  
+  config_name <- names(data_configs)[j]
+  data <- data_configs[[j]]
+  CAREFUL HERE USE CODE BELOW IF RUNNING FOR SUB AREA OTHWE WISE USE FROM LINE xx
+  # points as sf
+  pts <- sf::st_as_sf(data, coords = c("lcc_m","lcc_m"), crs = lcc)
+  
+  # estimate spatial range from response (continuous)
+  ar <- blockCV::cv_spatial_autocor(x = pts, column = "Yoy",plot=T)
+  size_m <- ar$range
+  
+  # build K-fold spatial blocks
+  cv <- blockCV::cv_spatial(
+    x = pts,
+    size = size_m,
+    k = 5,
+    hexagon = FALSE,
+    selection = "systematic",
+    plot = T
+  )
+   folds <- cv$folds_list  # each element: list(train_idx, test_idx)
+
+CAREFUL HERE NEED TO CALCULATE size_all FOR THE ENTIRE AREA AND USE IT FOR EACH SUBSET 
+
+ pts <- sf::st_as_sf(df_con_N, coords = c("Xlcc","Ylcc"), crs = lcc)
+  # estimate spatial range from response (continuous)
+  # build K-fold spatial blocks
+  cv_N <- blockCV::cv_spatial(
+    x = pts,
+    size = size_all,
+    k = 5,
+    hexagon = FALSE,
+    selection = "systematic",
+    plot = T
+  )
+  
+  kfold_N <- length(cv_N$folds_list)
+  folds_N <- cv_N$folds_list  # each element: list(train_idx, test_idx)    
+  
+  pts <- sf::st_as_sf(df_con_S_3, coords = c("Xlcc_m","Ylcc_m"), crs = lcc)
+  # estimate spatial range from response (continuous)
+  # build K-fold spatial blocks
+  cv_SW <- blockCV::cv_spatial(
+    x = pts,
+    size = size_all
+    k = 5,
+    hexagon = FALSE,
+    selection = "systematic",
+    plot = T
+  )
+  
+  kfold_SW <- length(cv$folds_list)
+  folds_SW <- cv_SW$folds_list  # each element: list(train_idx, test_idx)    
+  
+  rmse.loop <- array(NA_real_, dim = c(5, 5),
+                     dimnames = list(
+                       c('SPDE.IID','REP','GR.AR1','GR.IID','FRANK'), #CAREFUL HERE REMOVE FRANK IF RUNNING SUBSET
+                       paste0('loop_', 1:5)
+                     ))
+  
+  for (i in 1:5) {
+#CAREFUL HERE USE BELOW IF RUNNING LOOP FOR SUBSET OTHERWISE GO TO LINE
+    idx_tr <- folds[[i]][[1]]  # training indices
+    idx_te <- folds[[i]][[2]]  # validation indices
+    
+    train_df_N <- data[idx_tr, , drop = FALSE]
+    val_df_N   <- data[idx_te, , drop = FALSE]
+
+
+
+    idx_tr <- folds_N[[i]][[1]]  # training indices
+    idx_te <- folds_N[[i]][[2]]  # validation indices
+    
+    train_df_N <- df_con_N[idx_tr, , drop = FALSE]
+    val_df_N   <- df_con_N[idx_te, , drop = FALSE]
+    
+    idx_tr <- folds_SW[[i]][[1]]  # training indices
+    idx_te <- folds_SW[[i]][[2]]  # validation indices
+    
+    train_df_SW <- df_con_S_3[idx_tr, , drop = FALSE]
+    val_df_SW   <- df_con_S_3[idx_te, , drop = FALSE]
+    
+    train_df<- rbind(train_df_N,train_df_SW)
+    val_df <- rbind(val_df_N,val_df_SW)
+    
+    # ---------- Mesh & SPDE (from training only) ----------
+    location <- as.matrix(train_df[, c("Xlcc","Ylcc")])
+    boundary <- inla.nonconvex.hull(location)
+    
+    rx <- diff(range(train_df$Xlcc)); ry <- diff(range(train_df$Ylcc))
+    span <- max(rx, ry)
+    MaxEdge     <- span / 15
+    bound.outer <- span / 5
+    
+    mesh <- inla.mesh.2d(
+      loc      = location,
+      boundary = boundary,
+      max.edge = c(0.8, 3.5) * MaxEdge,
+      cutoff   = MaxEdge / 10,
+      offset   = c(MaxEdge, bound.outer)
+    )
+    
+    spde <- inla.spde2.pcmatern(
+      mesh        = mesh,
+      prior.range = c(0.5, 0.05),   # P(range < 0.5) = 0.05
+      prior.sigma = c(0.6, 0.05)    # P(sigma > 0.6) = 0.05
+    )
+    
+    ## Helper: indices for different interaction specifications
+    ## We'll recreate A matrices per spec, but always reuse the SAME 'mesh.index'
+    ## so the latent field is shared across train/val within a fold.
+    # 1) Plain spatial (no group/repl)
+    A_tr_sp  <- inla.spde.make.A(mesh, loc = cbind(train_df$Xlcc, train_df$Ylcc))
+    A_val_sp <- inla.spde.make.A(mesh, loc = cbind(val_df$Xlcc,   val_df$Ylcc))
+    mesh.index <- inla.spde.make.index("i.con", n.spde = spde$n.spde)
+    
+    # Common fixed/random effect list for both stacks
+    ef_tr <- list(mesh.index, list(b0 = 1, year = train_df$year_index))
+    ef_val<- list(mesh.index, list(b0 = 1, year = val_df$year_index))
+    
+    #### ========== MODEL 1: SPDE.IID (spatial + iid year) ==========
+    stk_tr <- inla.stack(
+      data    = list(y = train_df$Yoy),
+      A       = list(A_tr_sp, 1),
+      effects = ef_tr,
+      tag     = "train"
+    )
+    stk_val <- inla.stack(
+      data    = list(y = NA),
+      A       = list(A_val_sp, 1),
+      effects = ef_val,
+      tag     = "val"
+    )
+    stk <- inla.stack(stk_tr, stk_val)
+    
+    f1 <- y ~ -1 + b0 + f(i.con, model = spde) + f(year, model = "iid")
+    mod1 <- inla(
+      f1,
+      family = "gamma",  # default link is 'log' (appropriate for positive Y)
+      data = inla.stack.data(stk),
+      control.inla = list(strategy = "gaussian"),
+      control.compute = list(dic = FALSE, cpo = FALSE, waic = FALSE, return.marginals = FALSE),
+      control.predictor = list(A = inla.stack.A(stk), compute = TRUE,link=1),
+      verbose = TRUE, num.threads = 4
+    )
+    idx_val <- inla.stack.index(stk, tag = "val")$data
+    yhat <- mod1$summary.fitted.values[idx_val, 1]
+    obs  <- val_df$Yoy
+    rmse.loop[1, i] <- sqrt(mean((obs - yhat)^2, na.rm = TRUE))
+    rm(mod1)
+    
+    #### ========== MODEL 2: REP (replicate by year_index) ==========
+    A_tr_rep  <- inla.spde.make.A(mesh,
+                                  loc   = cbind(train_df$Xlcc, train_df$Ylcc),
+                                  repl  = train_df$year_index,
+                                  n.repl= length(unique(train_df$year_index)))
+    A_val_rep <- inla.spde.make.A(mesh,
+                                  loc   = cbind(val_df$Xlcc, val_df$Ylcc),
+                                  repl  = val_df$year_index,
+                                  n.repl= length(unique(val_df$year_index)))  # use training's n.repl
+    
+    mesh.index.rep <- inla.spde.make.index("i.con", n.spde = spde$n.spde,
+                                           n.repl = length(unique(train_df$year_index)))
+    
+    ef_tr_rep  <- list(mesh.index.rep, list(b0 = 1, year = train_df$year_index))
+    ef_val_rep <- list(mesh.index.rep, list(b0 = 1, year = val_df$year_index))
+    
+    stk_tr <- inla.stack(list(y = train_df$Yoy), list(A_tr_rep, 1), ef_tr_rep,  tag = "train")
+    stk_val<- inla.stack(list(y = NA),   list(A_val_rep, 1), ef_val_rep, tag = "val")
+    stk <- inla.stack(stk_tr, stk_val)
+    
+    f2 <- y ~ -1 + b0 + f(i.con, model = spde, replicate = i.con.repl)
+    mod2 <- inla(
+      f2,
+      family = "gamma",
+      data = inla.stack.data(stk),
+      control.inla = list(strategy = "gaussian"),
+      control.compute = list(dic = FALSE, cpo = FALSE, waic = FALSE, return.marginals = FALSE),
+      control.predictor = list(A = inla.stack.A(stk), compute = TRUE,link=1),
+      verbose = TRUE, num.threads = 4
+    )
+    idx_val <- inla.stack.index(stk, "val")$data
+    yhat <- mod2$summary.fitted.values[idx_val, 1]
+    obs  <- val_df$Yoy
+    rmse.loop[2, i] <- sqrt(mean((obs - yhat)^2, na.rm = TRUE))
+    rm(mod2)
+    
+    #### ========== MODEL 3: GR.AR1 (grouped AR1 in time) ==========
+    A_tr_grp  <- inla.spde.make.A(mesh,
+                                  loc    = cbind(train_df$Xlcc, train_df$Ylcc),
+                                  group  = train_df$year_index,
+                                  n.group= length(unique(train_df$year_index)))
+    A_val_grp <- inla.spde.make.A(mesh,
+                                  loc    = cbind(val_df$Xlcc, val_df$Ylcc),
+                                  group  = val_df$year_index,
+                                  n.group= length(unique(val_df$year_index)))
+    
+    mesh.index.grp <- inla.spde.make.index("i.con", n.spde = spde$n.spde,
+                                           n.group = length(unique(train_df$year_index)))
+    ef_tr_grp  <- list(mesh.index.grp, list(b0 = 1, year = train_df$year_index))
+    ef_val_grp <- list(mesh.index.grp, list(b0 = 1, year = val_df$year_index))
+    
+    stk_tr <- inla.stack(list(y = train_df$Yoy), list(A_tr_grp, 1), ef_tr_grp,  tag = "train")
+    stk_val<- inla.stack(list(y = NA),   list(A_val_grp, 1), ef_val_grp, tag = "val")
+    stk <- inla.stack(stk_tr, stk_val)
+    
+    f3 <- y ~ -1 + b0 + f(i.con, model = spde, group = i.con.group,
+                          control.group = list(model = "ar1"))
+    mod3 <- inla(
+      f3,
+      family = "gamma",
+      data = inla.stack.data(stk),
+      control.inla = list(strategy = "gaussian"),
+      control.compute = list(dic = FALSE, cpo = FALSE, waic = FALSE, return.marginals = FALSE),
+      control.predictor = list(A = inla.stack.A(stk), compute = TRUE,link=1),
+      verbose = TRUE, num.threads = 4
+    )
+    idx_val <- inla.stack.index(stk, "val")$data
+    yhat <- mod3$summary.fitted.values[idx_val, 1]
+    obs  <- val_df$Yoy
+    rmse.loop[3, i] <- sqrt(mean((obs - yhat)^2, na.rm = TRUE))
+    rm(mod3)
+    
+    #### ========== MODEL 4: GR.IID (grouped IID in time) ==========
+    f4 <- y ~ -1 + b0 + f(i.con, model = spde, group = i.con.group,
+                          control.group = list(model = "iid"))
+    mod4 <- inla(
+      f4,
+      family = "gamma",
+      data = inla.stack.data(stk),
+      control.inla = list(strategy = "gaussian"),
+      control.compute = list(dic = FALSE, cpo = FALSE, waic = FALSE, return.marginals = FALSE),
+      control.predictor = list(A = inla.stack.A(stk), compute = TRUE,link=1),
+      verbose = TRUE, num.threads = 4
+    )
+    idx_val <- inla.stack.index(stk, "val")$data
+    yhat <- mod4$summary.fitted.values[idx_val, 1]
+    obs  <- val_df$Yoy
+    rmse.loop[4, i] <- sqrt(mean((obs - yhat)^2, na.rm = TRUE))
+    rm(mod4)
+    
+  #} # end folds
+  
+  # Average RMSE across folds for this data config
+#  rmse[, j] <- rowMeans(rmse.loop, na.rm = TRUE)
+#} # end data configs
+
+#saveRDS(rmse,"rmse_real_CV.rds")
+
+##MODEL 5: FRANK-----------------
+train_df_N<- train_df[(train_df$SoS == 1),]
+train_df_SW<-train_df[(!train_df$SoS == 1),]
+val_df_N<- val_df[(val_df$SoS == 1),]
+val_df_SW<-val_df[(!val_df$SoS == 1),]
+
+
+A_tr_grp_N  <- inla.spde.make.A(mesh,
+                              loc    = cbind(train_df_N$Xlcc, train_df_N$Ylcc),
+                              group  = train_df_N$year_index,
+                              n.group= length(unique(train_df_N$year_index)))
+A_tr_grp_SW  <- inla.spde.make.A(mesh,
+                              loc    = cbind(train_df_SW$Xlcc, train_df_SW$Ylcc),
+                              group  = train_df_SW$year_index,
+                              n.group= length(unique(train_df_SW$year_index)))
+A_val_grp_N <- inla.spde.make.A(mesh,
+                              loc    = cbind(val_df_N$Xlcc, val_df_N$Ylcc),
+                              group  = val_df_N$year_index,
+                              n.group= length(unique(val_df_N$year_index)))
+A_val_grp_SW <- inla.spde.make.A(mesh,
+                              loc    = cbind(val_df_SW$Xlcc, val_df_SW$Ylcc),
+                              group  = val_df_SW$year_index,
+                              n.group= length(unique(val_df_SW$year_index)))
+
+mesh.index.grp_N <- inla.spde.make.index("i.con.N", n.spde = spde$n.spde,
+                                       n.group = length(unique(train_df_N$year_index)))
+
+mesh.index.grp_SW <- inla.spde.make.index("i.con.SW", n.spde = spde$n.spde,
+                                         n.group = length(unique(train_df_SW$year_index)))
+
+ef_tr_grp_N  <- list(mesh.index.grp_N, list(b0_N = 1, year = train_df_N$year_index))
+ef_tr_grp_SW  <- list(mesh.index.grp_SW, list(b0_SW = 1, year = train_df_SW$year_index))
+
+ef_val_grp_N <- list(mesh.index.grp_N, list(b0_N = 1, year = val_df_N$year_index))
+ef_val_grp_SW <- list(mesh.index.grp_SW, list(b0_SW = 1, year = val_df_SW$year_index))
+
+
+stk_tr_N <- inla.stack(list(y = train_df_N$Yoy), list(A_tr_grp_N, 1), ef_tr_grp_N,  tag = "train.N")
+stk_tr_SW <- inla.stack(list(y = train_df_SW$Yoy), list(A_tr_grp_SW, 1), ef_tr_grp_SW,  tag = "train.SW")
+
+stk_val_N<- inla.stack(list(y = NA),   list(A_val_grp_N, 1), ef_val_grp_N, tag = "val.N")
+stk_val_SW<- inla.stack(list(y = NA),   list(A_val_grp_SW, 1), ef_val_grp_SW, tag = "val.SW")
+
+
+stk <- inla.stack(stk_tr_N,stk_tr_SW, stk_val_N,stk_val_SW)
+
+f.frank <- y ~ -1 + b0_N + b0_SW+
+  f(i.con.N, model = spde, group = i.con.N.group,control.group = list(model = "ar1"))+
+  f(i.con.SW, model = spde, group = i.con.SW.group,control.group = list(model = "ar1"))
+mod.frak <- inla(
+  f.frank,
+  family = "gamma",
+  data = inla.stack.data(stk),
+  control.inla = list(strategy = "gaussian"),
+  control.compute = list(dic = FALSE, cpo = FALSE, waic = FALSE, return.marginals = FALSE),
+  control.predictor = list(A = inla.stack.A(stk), compute = TRUE,link=1),
+  verbose = TRUE, num.threads = 4
+)
+idx_val_N <- inla.stack.index(stk, "val.N")$data
+yhat.N <- mod.frak$summary.fitted.values[idx_val, 1]
+idx_val_N <- inla.stack.index(stk, "val.SW")$data
+yhat.SW <- mod.frak$summary.fitted.values[idx_val, 1]
+yhat<-c(yhat.N,yhat.SW)
+obs  <- val_df$Yoy
+rmse.loop[5, i] <- sqrt(mean((obs - yhat)^2, na.rm = TRUE))
+}
+
+
+ 
+  
