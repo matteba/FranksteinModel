@@ -1,7 +1,9 @@
 #This is the code for testing the configurations and the Frankestein model and calculating the cross-validation
 #Double check the code before running
 
+#BEFORE START PLEASE LOAD df_real.rds IN YOUR r ENVIROMENT
 
+library(INLA)
 #nord
 df_con_N<- real_df[(real_df$Sos==1),]
 #sud +3
