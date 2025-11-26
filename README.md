@@ -27,25 +27,32 @@ The approach was developed and tested using both simulated and real-world data (
 
 ## Description of Scripts
 
-- **01_simulate_dataset.R**  
+-**01_simulate_dataset.R**
+
 This script generates a synthetic dataset with two ecological regions (A and B), each exhibiting different spatio-temporal dynamics. Region A is modelled with a progressive AR(1) process, while Region B follows a persistent spatial structure with a linear temporal trend. Abundance is simulated from a Gamma distribution, and observational error is introduced.
 
 -**02_SP-T_FIT & CV- FRANK_2reg.R**
+
 This script fits four individual spatio-temporal SDM configurations (persistent, opportunistic, progressive-Type-IV-AR1 and TypeIII) to each of the two regions and then constructs the Frankenstein SDM, which integrates the best configuration per region. The script also implements cross-validation to assess predictive performance. Outputs include model comparison metrics (WAIC), cross-validation results (RMSE), and visual diagnostics.
 
 -**03_COVARIATE SIM&FIT&CV.R**
+
 This script simulates an environmental covariate field and links it to the spatio-temporal abundance data. Two covariates are simulated; cov1 that better describes the the abundance in region A and cov2 the one in region B (see the manuscript for more details).It then fits the different SDM configurations (including the Frankenstein SDM) that explicitly include this covariate and performs cross-validation. The goal is to evaluate how well each configuration recovers covariate effects and predicts abundance under different spatio-temporal structures.
 
 -**04_simulate_dataset_4reg.R**
+
 This script extends the simulation framework to four ecological regions with diverse spatio-temporal dependencies. Each region can follow a different spatio-temporal pattern (e.g. progressive, persistent, opportunistic). As in the two-region case, abundance is generated from a Gamma distribution with added observational error.
 
 -**05_SP-T_FIT & CV- FRANK_4reg.R**
+
 This script fits the set of spatio-temporal SDM configurations to the four-region simulated dataset and constructs the corresponding Frankenstein SDM by combining the best configuration for each region. It includes model comparison ( WAIC), cross-validation (RMSE), and diagnostic plots to assess performance under more complex spatial partitioning.
 
 -**06_Projection.R**
+
 This script projects the four single SDM configurations and the Frankenstein SDM using the first simulated dataset stored in the /data/ folder. It generates contour maps for the observed data and for the projected outputs of each configuration and the Frankenstein model. These projections are used to produce Figure 3 in the manuscript.
 
 -**07_REAL-DATASET-FIT&CV-FRANKENSTEIN.R**
+
 This script applies the modelling framework to the real-world dataset (GRUND survey, for more details please read the paragraph 4 of Material and Method). It fits the different spatio-temporal SDM configurations and the Frankenstein SDM, performs cross-validation, and compares model performance. To run this scrip use the object real_df.rds in data folder.
 
 /data/
