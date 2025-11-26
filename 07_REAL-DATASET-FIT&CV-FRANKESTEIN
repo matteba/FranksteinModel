@@ -16,8 +16,7 @@ sp.tem.arr <- array(NA, dim = c(4,3),
                     dimnames = list(
                       c('SPDE.IID',
                         'REP',
-                        'GR.AR1','GR.IID'#, 
-                        #'GR.RW2'
+                        'GR.AR1','GR.IID'    
                       ),
                       c('N', 'SW', 'All')
                     ))
@@ -211,7 +210,7 @@ for (j in seq_along(data_configs)) {
   
   config_name <- names(data_configs)[j]
   data <- data_configs[[j]]
-  CAREFUL HERE USE CODE BELOW IF RUNNING FOR SUB AREA OTHWE WISE USE FROM LINE xx
+  #CAREFUL HERE USE CODE BELOW IF RUNNING FOR SUB AREA OTHWE WISE USE FROM LINE 232
   # points as sf
   pts <- sf::st_as_sf(data, coords = c("lcc_m","lcc_m"), crs = lcc)
   
@@ -230,8 +229,7 @@ for (j in seq_along(data_configs)) {
   )
    folds <- cv$folds_list  # each element: list(train_idx, test_idx)
 
-CAREFUL HERE NEED TO CALCULATE size_all FOR THE ENTIRE AREA AND USE IT FOR EACH SUBSET 
-
+#CAREFUL HERE NEED TO CALCULATE size_all FOR THE ENTIRE AREA AND USE IT FOR EACH SUBSET 
  pts <- sf::st_as_sf(df_con_N, coords = c("Xlcc","Ylcc"), crs = lcc)
   # estimate spatial range from response (continuous)
   # build K-fold spatial blocks
@@ -269,14 +267,12 @@ CAREFUL HERE NEED TO CALCULATE size_all FOR THE ENTIRE AREA AND USE IT FOR EACH 
                      ))
   
   for (i in 1:5) {
-#CAREFUL HERE USE BELOW IF RUNNING LOOP FOR SUBSET OTHERWISE GO TO LINE
+#CAREFUL HERE USE BELOW IF RUNNING LOOP FOR SUBSET OTHERWISE GO TO LINE 277
     idx_tr <- folds[[i]][[1]]  # training indices
     idx_te <- folds[[i]][[2]]  # validation indices
     
     train_df_N <- data[idx_tr, , drop = FALSE]
     val_df_N   <- data[idx_te, , drop = FALSE]
-
-
 
     idx_tr <- folds_N[[i]][[1]]  # training indices
     idx_te <- folds_N[[i]][[2]]  # validation indices
