@@ -1,3 +1,5 @@
+#BEFORE STARTING LOAD SIM sim.list.4reg.final.rds IN YOUR R ENVIROMENT
+
 # Create empty 3D array: 4 rows (strategies), 100 cols (simulations), 3 layers (configs)
   sp.tem.arr <- array(NA, dim = c(4, 30, 5),
                       dimnames = list(
