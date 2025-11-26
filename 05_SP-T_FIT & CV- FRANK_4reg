@@ -186,11 +186,6 @@ sp.tem.frank <- array(NA, dim = c(1, 30),
                       dimnames = list(
                         c('FRANK'),
                         paste0('sim_', 1:30)))
-LPM.frank <- array(NA, dim = c(1, 30),
-                      dimnames = list(
-                        c('FRANK'),
-                        paste0('sim_', 1:30)))
-
 
 for (i in 1:30) {
   data <- sim.list[[i]]
@@ -232,7 +227,7 @@ for (i in 1:30) {
   temp_B <- inla.spde.make.A(mesh, loc=cbind(data_B$x, data_B$y))
   mesh.index_B<- inla.spde.make.index("i.con.B", n.spde=spde$n.spde) #test spde with or without prior
   
-  #PA_Yoy<- ifelse(data$Yoy>0,1,0)
+
   fit.stack_B<-inla.stack(data=list(y=data_B$abundance),
                           A=list(temp_B,1),
                           effects=list(mesh.index_B,
@@ -282,8 +277,6 @@ for (i in 1:30) {
                   control.predictor=list(A=inla.stack.A(fit.stack), compute=TRUE),
                   control.inla = list(strategy = "gaussian"), 
                   verbose=TRUE, num.threads = 4)
-  
-
   sp.tem.frank[1,i]<-mod.frank$waic$waic
   rm(mod.frank)
 }
